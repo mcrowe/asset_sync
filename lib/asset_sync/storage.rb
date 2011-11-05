@@ -54,13 +54,36 @@ module AssetSync
     end
 
     def upload_file(f)
-      STDERR.puts "Uploading: #{f}"
-      file = bucket.files.create(
-        :key => "#{f}",
+      file = {
+        :key => f,
         :body => File.open("#{path}/#{f}"),
         :public => true,
         :cache_control => "max-age=31557600"
-      )
+      }
+
+      gzipped = "#{path}/#{f}.gz"
+      ignore = false
+
+      if config.gzip? && File.extname(f) == ".gz"
+        # Don't bother uploading gzipped assets if we are in gzip_compression mode
+        # as we will overwrite file.css with file.css.gz if it exists.
+        STDERR.puts "Ignoring: #{f}"
+        ignore = true
+      elsif config.gzip? && File.exists?(gzipped)
+        ext = File.extname( f )[1..-1]
+        mime = Mime::Type.lookup_by_extension( ext )
+        file.merge!({
+          :key => f,
+          :body => File.open(gzipped),
+          :content_type     => mime,
+          :content_encoding => 'gzip'
+        })
+        STDERR.puts "Uploading: #{gzipped} in place of #{f}"
+      else
+        STDERR.puts "Uploading: #{f}"
+      end
+
+      file = bucket.files.create( file ) unless ignore
     end
 
     def upload_files
